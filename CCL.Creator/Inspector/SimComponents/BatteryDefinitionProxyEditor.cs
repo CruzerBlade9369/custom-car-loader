@@ -35,9 +35,12 @@ namespace CCL.Creator.Inspector.SimComponents
                     break;
             }
 
+            float totalResistance = _proxy.numSeriesCells * _proxy.internalResistance;
+
             EditorHelpers.DrawHeader("Calculated Values");
             EditorGUILayout.LabelField("Min Voltage", $"{minVoltage:F2} V");
             EditorGUILayout.LabelField("Max Voltage", $"{maxVoltage:F2} V");
+            EditorGUILayout.LabelField("Total Resistance", $"{totalResistance:F2} Ω");
 
             EditorHelpers.DrawLocoDefaultsButtons(target);
         }

@@ -79,6 +79,9 @@ namespace CCL.Importer.Components
             CreateMap<MultipleFuseLogicDefinition, MultipleFuseLogicDefinitionInternal>().AutoCacheAndMap();
             CreateMap<ConstantMultiplierOffsetDefinition, ConstantMultiplierOffsetDefinitionInternal>().AutoCacheAndMap();
             CreateMap<RPMDamageCalculatorDefinition, RPMDamageCalculatorDefinitionInternal>().AutoCacheAndMap();
+            CreateMap<DieselBatteryHybridDefinition, DieselBatteryHybridDefinitionInternal>().AutoCacheAndMap();
+            CreateMap<RegenerativeBrakingDefinition, RegenerativeBrakingDefinitionInternal>().AutoCacheAndMap();
+            CreateMap<TractionControlDefinition, TractionControlDefinitionInternal>().AutoCacheAndMap();
 
             // Electric.
             CreateMap<BatteryCustomCurveDefinition, BatteryCustomCurveDefinitionInternal>().AutoCacheAndMap();

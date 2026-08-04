@@ -31,7 +31,7 @@ namespace CCL.Importer.Implementations
             powerOut = AddPort(def.powerOut);
             isActive = AddPort(def.isActive);
 
-            maxRegenPowerW = def.maxRegenPowerW;
+            maxRegenPowerW = def.maxRegenPower;
             maxRechargeNorm = def.maximumBatteryRechargeLevel;
         }
 

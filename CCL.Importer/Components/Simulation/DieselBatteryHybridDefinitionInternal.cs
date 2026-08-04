@@ -9,8 +9,9 @@ namespace CCL.Importer.Components.Simulation
         public float modeTransitionDelay = 1f;
         public float maxChargeBatteryLevel = 0.95f;
         public float chargeBatteryLevel = 0.6f;
-        public float emergencyBatteryLevel = 0.5f;
-        public float maxBatteryRechargePowerW = 200000f;
+        public float emergencyBatteryLevel = 0.4f;
+        public float batteryRechargePower = 200000f;
+        public float engineRechargeThrottle = 0.5f;
 
         public string powerFuseId = string.Empty;
 
@@ -18,6 +19,8 @@ namespace CCL.Importer.Components.Simulation
             new(PortValueType.CONTROL, "THROTTLE");
         public readonly PortReferenceDefinition generatorVoltage =
             new(PortValueType.VOLTS, "GENERATOR_VOLTS");
+        public readonly PortReferenceDefinition voltRegVoltage =
+            new(PortValueType.VOLTS, "VOLTAGE_REGULATOR_VOLTS");
         public readonly PortReferenceDefinition batteryVoltage =
             new(PortValueType.VOLTS, "BATTERY_VOLTS");
         public readonly PortReferenceDefinition batteryChargeNorm =
@@ -27,9 +30,13 @@ namespace CCL.Importer.Components.Simulation
         public readonly PortReferenceDefinition effectiveResistance =
             new(PortValueType.OHMS, "EFFECTIVE_RESISTANCE");
         public readonly PortReferenceDefinition genGoalPower =
-            new(PortValueType.POWER, "GENERATOR_GOAL_POWER");
-        public readonly PortReferenceDefinition genGoalRpmNorm =
-            new(PortValueType.POWER, "GENERATOR_GOAL_RPM_NORMALIZED");
+            new(PortValueType.POWER, "GOAL_POWER");
+        public readonly PortReferenceDefinition genPowerOutRead =
+            new(PortValueType.POWER, "GENERATOR_POWER_OUT_READ");
+        public readonly PortReferenceDefinition tmTotalAmps =
+            new(PortValueType.POWER, "TM_TOTAL_AMPS");
+        public readonly PortReferenceDefinition transitionCurrentLimit =
+            new(PortValueType.POWER, "TM_TRANSITION_CURRENT_LIMIT");
         public readonly PortReferenceDefinition tmPowerIn =
             new(PortValueType.POWER, "TM_POWER_IN_READ");
         public readonly PortReferenceDefinition chargeDisableOverride =
@@ -38,13 +45,13 @@ namespace CCL.Importer.Components.Simulation
             new(PortValueType.CONTROL, "HYBRID_MODE_EXT_IN");
 
         public readonly PortDefinition throttleDeOut =
-            new(PortType.READONLY_OUT, PortValueType.CONTROL, "THROTTLE_OUT_DE");
+            new(PortType.READONLY_OUT, PortValueType.CONTROL, "THROTTLE_OUT_ENGINE");
         public readonly PortDefinition throttleBatteryOut =
-            new(PortType.READONLY_OUT, PortValueType.CONTROL, "THROTTLE_OUT_BATT");
+            new(PortType.READONLY_OUT, PortValueType.CONTROL, "THROTTLE_OUT_BATTERY");
         public readonly PortDefinition SmerGen =
-            new(PortType.READONLY_OUT, PortValueType.OHMS, "SMER_OUT_GENERATOR");
+            new(PortType.READONLY_OUT, PortValueType.OHMS, "SINGLE_MOTOR_EFFECTIVE_RESISTANCE_OUT_GENERATOR");
         public readonly PortDefinition SmerBatt =
-            new(PortType.READONLY_OUT, PortValueType.OHMS, "SMER_OUT_BATTERY");
+            new(PortType.READONLY_OUT, PortValueType.OHMS, "SINGLE_MOTOR_EFFECTIVE_RESISTANCE_OUT_BATTERY");
         public readonly PortDefinition effectiveResistanceOut =
             new(PortType.READONLY_OUT, PortValueType.OHMS, "EFFECTIVE_RESISTANCE_OUT");
         public readonly PortDefinition tmPowerInReadOut =
@@ -53,8 +60,10 @@ namespace CCL.Importer.Components.Simulation
             new(PortType.READONLY_OUT, PortValueType.VOLTS, "VOLTS_OUT");
         public readonly PortDefinition genGoalPowerOut =
             new(PortType.READONLY_OUT, PortValueType.POWER, "GEN_GOAL_PWR_OUT");
-        public readonly PortDefinition genGoalRpmNormOut =
-            new(PortType.READONLY_OUT, PortValueType.RPM, "GEN_GOAL_RPM_NORM_OUT");
+        public readonly PortDefinition tmTotalAmpsOut =
+            new(PortType.READONLY_OUT, PortValueType.POWER, "TM_TOTAL_AMPS_OUT");
+        public readonly PortDefinition transitionCurrentLimitOut =
+            new(PortType.READONLY_OUT, PortValueType.POWER, "TM_TRANSITION_CURRENT_LIMIT_OUT");
         public readonly PortDefinition isChargingBattery =
             new(PortType.READONLY_OUT, PortValueType.STATE, "IS_CHARGING_BATTERY");
         public readonly PortDefinition activeMode =

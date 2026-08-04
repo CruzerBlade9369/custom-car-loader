@@ -6,7 +6,7 @@ namespace CCL.Importer.Components.Simulation
 {
     internal class RegenerativeBrakingDefinitionInternal : SimComponentDefinition
     {
-        public float maxRegenPowerW = 200000f;
+        public float maxRegenPower = 200000f;
         public float maximumBatteryRechargeLevel = 0.95f;
 
         public string powerFuseId = string.Empty;

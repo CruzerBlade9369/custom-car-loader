@@ -1,5 +1,6 @@
 ﻿using CCL.Importer.Components.Simulation;
 using LocoSim.Implementations;
+using UnityEngine;
 
 namespace CCL.Importer.Implementations
 {
@@ -9,12 +10,15 @@ namespace CCL.Importer.Implementations
 
         private readonly PortReference throttle;
         private readonly PortReference generatorVoltage;
-        private readonly PortReference batteryVoltage;
+        private readonly PortReference voltRegVoltage;
+        private readonly PortReference batteryVolts;
         private readonly PortReference batteryChargeNorm;
         private readonly PortReference smer;
         private readonly PortReference effectiveResistance;
         private readonly PortReference genGoalPower;
-        private readonly PortReference genGoalRpmNorm;
+        private readonly PortReference genPowerOutRead;
+        private readonly PortReference tmTotalAmps;
+        private readonly PortReference tmTransitionCurrentLimit;
         private readonly PortReference tmPowerInRead;
         private readonly PortReference chargingOverride;
         private readonly PortReference hybridMode;
@@ -27,8 +31,9 @@ namespace CCL.Importer.Implementations
         private readonly Port tmPowerInReadOut;
         private readonly Port voltageBusOut;
         private readonly Port genGoalPowerOut;
-        private readonly Port genGoalRpmNormOut;
-        private readonly Port chargingBatteryState;
+        private readonly Port tmTotalAmpsOut;
+        private readonly Port tmTransitionCurrentLimitOut;
+        private readonly Port isChargingBattery;
         private readonly Port activeMode;
         private readonly Port dieselModeState;
         private readonly Port batteryModeState;
@@ -37,7 +42,7 @@ namespace CCL.Importer.Implementations
         private readonly float maxChargeBatteryLevel;
         private readonly float startChargeBatteryLevel;
         private readonly float emergencyBatteryLevel;
-        private readonly float maxBatteryRechargePowerW;
+        private readonly float genTargetPwr;
 
         private HybridMode selectorMode;
         private HybridMode requestedMode;
@@ -45,14 +50,10 @@ namespace CCL.Importer.Implementations
         private HybridMode currentMode;
         private float transitionTimer;
         private bool isTransitioning;
-        
+        private bool isCharging;
         private bool batteryLow;
-
         private bool allowedToCharge;
-
-        private float engineTargetRpmNorm;
-        private float genTargetRpmNorm;
-        private float genTargetPwr;
+        private float chargingThrottle;
 
         private enum HybridMode
         {
@@ -67,15 +68,22 @@ namespace CCL.Importer.Implementations
             maxChargeBatteryLevel = def.maxChargeBatteryLevel;
             startChargeBatteryLevel = def.chargeBatteryLevel;
             emergencyBatteryLevel = def.emergencyBatteryLevel;
-            maxBatteryRechargePowerW = def.maxBatteryRechargePowerW;
+            genTargetPwr = def.batteryRechargePower;
+            chargingThrottle = def.engineRechargeThrottle;
 
             powerFuseRef = AddFuseReference(def.powerFuseId);
 
             throttle = AddPortReference(def.throttle);
             generatorVoltage = AddPortReference(def.generatorVoltage);
-            batteryVoltage = AddPortReference(def.batteryVoltage);
+            voltRegVoltage = AddPortReference(def.voltRegVoltage);
+            batteryVolts = AddPortReference(def.batteryVoltage);
             batteryChargeNorm = AddPortReference(def.batteryChargeNorm);
             smer = AddPortReference(def.singleMotorEffectiveResistance);
+            effectiveResistance = AddPortReference(def.effectiveResistance);
+            genGoalPower = AddPortReference(def.genGoalPower);
+            genPowerOutRead = AddPortReference(def.genPowerOutRead);
+            tmTotalAmps = AddPortReference(def.tmTotalAmps);
+            tmTransitionCurrentLimit = AddPortReference(def.transitionCurrentLimit);
             tmPowerInRead = AddPortReference(def.tmPowerIn);
             chargingOverride = AddPortReference(def.chargeDisableOverride);
             hybridMode = AddPortReference(def.hybridModeControl);
@@ -84,18 +92,18 @@ namespace CCL.Importer.Implementations
             throttleBatOut = AddPort(def.throttleBatteryOut);
             smerGenOut = AddPort(def.SmerGen);
             smerBatOut = AddPort(def.SmerBatt);
+            effectiveResistanceOut = AddPort(def.effectiveResistanceOut);
             tmPowerInReadOut = AddPort(def.tmPowerInReadOut);
             voltageBusOut = AddPort(def.voltageBusOut);
-            chargingBatteryState = AddPort(def.isChargingBattery);
+            genGoalPowerOut = AddPort(def.genGoalPowerOut);
+            tmTotalAmpsOut = AddPort(def.tmTotalAmpsOut);
+            tmTransitionCurrentLimitOut = AddPort(def.transitionCurrentLimitOut);
+            isChargingBattery = AddPort(def.isChargingBattery);
             activeMode = AddPort(def.activeMode);
             dieselModeState = AddPort(def.dieselModeState);
             batteryModeState = AddPort(def.batteryModeState);
 
             allowedToCharge = false;
-
-            engineTargetRpmNorm = 0.5f;
-            genTargetRpmNorm = 0.5f;
-            genTargetPwr = 200000f;
         }
 
         public override void Tick(float delta)
@@ -124,8 +132,8 @@ namespace CCL.Importer.Implementations
                 SimulateModeStates();
             }
 
-            CheckIfAllowedToCharge();
-            SimulateCharging();
+            if (allowedToCharge) isChargingBattery.Value = 1;
+            else isChargingBattery.Value = 0;
         }
 
         private void SimulateSwitching(float delta)
@@ -218,7 +226,9 @@ namespace CCL.Importer.Implementations
             }
             else
             {
-                if (batteryChargeNorm.Value >= maxChargeBatteryLevel)
+                if (currentMode != HybridMode.Battery
+                    || chargingOverride.Value == 1
+                    || batteryChargeNorm.Value >= maxChargeBatteryLevel)
                 {
                     allowedToCharge = false;
                 }
@@ -227,41 +237,64 @@ namespace CCL.Importer.Implementations
 
         private void SimulateCharging()
         {
-            // placeholder targets for now
             if (allowedToCharge)
             {
-                throttleDeOut.Value = engineTargetRpmNorm;
+                throttleDeOut.Value = chargingThrottle;
 
-                float resistance = CalculateChargerResistance();
+                float resistance = CalculateChargeResistance();
 
                 smerGenOut.Value = resistance;
                 effectiveResistanceOut.Value = resistance;
                 genGoalPowerOut.Value = genTargetPwr;
-                genGoalRpmNormOut.Value = genTargetRpmNorm;
 
-                chargingBatteryState.Value = 1;
+                tmPowerInReadOut.Value = CalculateChargeAmount();
+                tmTotalAmpsOut.Value = CalculateChargeAmps();
+
+                isCharging = true;
+                isChargingBattery.Value = 1;
             }
             else
             {
-                //throttleDeOut.Value = 0f;
+                throttleDeOut.Value = 0f;
 
                 smerGenOut.Value = float.PositiveInfinity;
                 effectiveResistanceOut.Value = float.PositiveInfinity;
                 genGoalPowerOut.Value = 0f;
-                genGoalRpmNormOut.Value = 0f;
 
-                chargingBatteryState.Value = 0;
+                tmPowerInReadOut.Value = tmPowerInRead.Value;
+                tmTotalAmpsOut.Value = 0f;
+
+                isCharging = false;
+                isChargingBattery.Value = 0;
             }
         }
 
-        private float CalculateChargerResistance()
+        private float CalculateChargeResistance()
         {
-            float genV = generatorVoltage.Value;
-            float currentVoltsSq = genV * genV;
+            float v = batteryVolts.Value;
+            float voltsSq = v * v;
 
-            float resistance = currentVoltsSq / genTargetPwr;
+            float resistance = voltsSq / genTargetPwr;
 
             return resistance;
+        }
+
+        private float CalculateChargeAmps()
+        {
+            float resistance = CalculateChargeResistance();
+
+            if (resistance <= 0f || float.IsInfinity(resistance))
+                return 0f;
+
+            return generatorVoltage.Value / resistance;
+        }
+
+        private float CalculateChargeAmount()
+        {
+            float chargeIn = -Mathf.Min(genPowerOutRead.Value, genTargetPwr);
+            float powerDraw = tmPowerInRead.Value;
+
+            return powerDraw + chargeIn;
         }
 
         private void ConfigureDisconnectAll()
@@ -273,7 +306,6 @@ namespace CCL.Importer.Implementations
             smerGenOut.Value = float.PositiveInfinity;
             effectiveResistanceOut.Value = float.PositiveInfinity;
             genGoalPowerOut.Value = 0f;
-            genGoalRpmNormOut.Value = 0f;
 
             tmPowerInReadOut.Value = 0f;
             throttleBatOut.Value = 0f;
@@ -289,25 +321,26 @@ namespace CCL.Importer.Implementations
             smerGenOut.Value = smer.Value;
             effectiveResistanceOut.Value = effectiveResistance.Value;
             genGoalPowerOut.Value = genGoalPower.Value;
-            genGoalRpmNormOut.Value = genGoalRpmNorm.Value;
+
+            tmTotalAmpsOut.Value = tmTotalAmps.Value;
+            tmTransitionCurrentLimitOut.Value = tmTransitionCurrentLimit.Value;
 
             tmPowerInReadOut.Value = 0f;
             throttleBatOut.Value = 0f;
             smerBatOut.Value = float.PositiveInfinity;
+
+            allowedToCharge = false;
         }
 
         private void ConfigureBatteryMode()
         {
-            voltageBusOut.Value = batteryVoltage.Value;
+            voltageBusOut.Value = voltRegVoltage.Value;
 
-            //throttleDeOut.Value = 0f;
+            CheckIfAllowedToCharge();
+            SimulateCharging();
 
-            //smerGenOut.Value = float.PositiveInfinity;
-            //effectiveResistanceOut.Value = float.PositiveInfinity;
-            //genGoalPowerOut.Value = 0f;
-            //genGoalRpmNormOut.Value = 0f;
+            tmTransitionCurrentLimitOut.Value = float.PositiveInfinity;
 
-            tmPowerInReadOut.Value = tmPowerInRead.Value;
             throttleBatOut.Value = throttle.Value;
             smerBatOut.Value = smer.Value;
         }

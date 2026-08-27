@@ -16,7 +16,7 @@ namespace CCL.Importer.Implementations
         private readonly Port powerOut;
         private readonly Port isActive;
 
-        private readonly float maxRegenPowerW;
+        private readonly float maxRegenPower;
         private readonly float maxRechargeNorm;
 
         public RegenerativeBraking(RegenerativeBrakingDefinitionInternal def) : base(def.ID)
@@ -31,8 +31,8 @@ namespace CCL.Importer.Implementations
             powerOut = AddPort(def.powerOut);
             isActive = AddPort(def.isActive);
 
-            maxRegenPowerW = def.maxRegenPower;
-            maxRechargeNorm = def.maximumBatteryRechargeLevel;
+            maxRegenPower = def.maximumRegenPower;
+            maxRechargeNorm = def.maxChargeBatteryLevel;
         }
 
         public override void Tick(float delta)
@@ -46,7 +46,7 @@ namespace CCL.Importer.Implementations
             if (dynamicBrkActive.Value >= 0.1f && batteryChargeNorm.Value < maxRechargeNorm)
             {
                 isActive.Value = 1f;
-                powerOut.Value = Mathf.Clamp(tmPowerOutRead.Value, -maxRegenPowerW, 0);
+                powerOut.Value = Mathf.Clamp(tmPowerOutRead.Value, -maxRegenPower, 0);
             }
             else
             {

@@ -1,5 +1,6 @@
 ﻿using CCL.Importer.Components.Simulation;
 using LocoSim.Implementations;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace CCL.Importer.Implementations
@@ -21,8 +22,14 @@ namespace CCL.Importer.Implementations
         private readonly PortReference tmTransitionCurrentLimit;
         private readonly PortReference tmPowerInRead;
         private readonly PortReference chargingOverride;
+        private readonly PortReference manualChargeToggle;
+        private readonly PortReference chargeLimitUpperBound;
+        private readonly PortReference chargeLimitLowerBound;
         private readonly PortReference hybridMode;
+        private readonly PortReference extAmpLimitGen;
+        private readonly PortReference extAmpLimitVoltReg;
 
+        private readonly Port extCurrentLimitExtIn;
         private readonly Port throttleDeOut;
         private readonly Port throttleBatOut;
         private readonly Port smerGenOut;
@@ -33,16 +40,19 @@ namespace CCL.Importer.Implementations
         private readonly Port genGoalPowerOut;
         private readonly Port tmTotalAmpsOut;
         private readonly Port tmTransitionCurrentLimitOut;
-        private readonly Port isChargingBattery;
+        private readonly Port chargingActive;
         private readonly Port activeMode;
         private readonly Port dieselModeState;
         private readonly Port batteryModeState;
+        private readonly Port batteryLowState;
 
         private readonly float modeTransitionDelay;
         private readonly float maxChargeBatteryLevel;
         private readonly float startChargeBatteryLevel;
         private readonly float emergencyBatteryLevel;
         private readonly float genTargetPwr;
+        private readonly bool manualChargingOnly;
+        private readonly bool adjustableChargeHysteresis;
 
         private HybridMode selectorMode;
         private HybridMode requestedMode;
@@ -50,10 +60,19 @@ namespace CCL.Importer.Implementations
         private HybridMode currentMode;
         private float transitionTimer;
         private bool isTransitioning;
-        private bool isCharging;
+        private bool withinChargeRange;
+        private bool chargeAnyway;
         private bool batteryLow;
-        private bool allowedToCharge;
+        private bool isCharging;
+        private bool chargingPermitted;
         private float chargingThrottle;
+        private float upperChargeThreshold;
+        private float lowerChargeThreshold;
+        private float extAmpLimitFloatIn;
+
+        public override bool HasSaveData => true;
+        private const string SOC_HYSTERESIS_STATE_SAVE_KEY = "socHysteresisState";
+        private const string HYBRID_MODE_SAVE_KEY = "savedHybridMode";
 
         private enum HybridMode
         {
@@ -66,10 +85,12 @@ namespace CCL.Importer.Implementations
         {
             modeTransitionDelay = def.modeTransitionDelay;
             maxChargeBatteryLevel = def.maxChargeBatteryLevel;
-            startChargeBatteryLevel = def.chargeBatteryLevel;
+            startChargeBatteryLevel = def.startChargeBatteryLevel;
             emergencyBatteryLevel = def.emergencyBatteryLevel;
             genTargetPwr = def.batteryRechargePower;
             chargingThrottle = def.engineRechargeThrottle;
+            manualChargingOnly = def.manualChargingOnly;
+            adjustableChargeHysteresis = def.adjustableChargeHysteresis;
 
             powerFuseRef = AddFuseReference(def.powerFuseId);
 
@@ -86,8 +107,14 @@ namespace CCL.Importer.Implementations
             tmTransitionCurrentLimit = AddPortReference(def.transitionCurrentLimit);
             tmPowerInRead = AddPortReference(def.tmPowerIn);
             chargingOverride = AddPortReference(def.chargeDisableOverride);
+            manualChargeToggle = AddPortReference(def.manualChargeToggle);
+            chargeLimitUpperBound = AddPortReference(def.chargeLimitUpperBound);
+            chargeLimitLowerBound = AddPortReference(def.chargeLimitLowerBound);
             hybridMode = AddPortReference(def.hybridModeControl);
+            extAmpLimitGen = AddPortReference(def.extAmpLimitGen);
+            extAmpLimitVoltReg = AddPortReference(def.extAmpLimitVoltReg);
 
+            extCurrentLimitExtIn = AddPort(def.extCurrentLimitExtIn);
             throttleDeOut = AddPort(def.throttleDeOut);
             throttleBatOut = AddPort(def.throttleBatteryOut);
             smerGenOut = AddPort(def.SmerGen);
@@ -98,16 +125,24 @@ namespace CCL.Importer.Implementations
             genGoalPowerOut = AddPort(def.genGoalPowerOut);
             tmTotalAmpsOut = AddPort(def.tmTotalAmpsOut);
             tmTransitionCurrentLimitOut = AddPort(def.transitionCurrentLimitOut);
-            isChargingBattery = AddPort(def.isChargingBattery);
+            chargingActive = AddPort(def.chargingActive);
             activeMode = AddPort(def.activeMode);
             dieselModeState = AddPort(def.dieselModeState);
             batteryModeState = AddPort(def.batteryModeState);
+            batteryLowState = AddPort(def.batteryLow);
 
-            allowedToCharge = false;
+            withinChargeRange = false;
+            chargingPermitted = false;
+            batteryLow = false;
+            isCharging = false;
         }
 
         public override void Tick(float delta)
         {
+            // Sanitize limiter
+            extAmpLimitFloatIn = extCurrentLimitExtIn.Value;
+            if (extAmpLimitFloatIn == 0) extAmpLimitFloatIn = float.PositiveInfinity;
+
             // Mode selector
             if (hybridMode.Value < 0.5)
             {
@@ -120,20 +155,24 @@ namespace CCL.Importer.Implementations
             }
 
             // No switching without power
-            if (!powerFuseRef.State)
+            if (!powerFuseRef.State && powerFuseRef != null)
             {
                 return;
             }
 
             SimulateSwitching(delta);
-            
+            HandleHysteresisThresholds();
+
             if (!isTransitioning || transitionTimer <= 0f)
             {
-                SimulateModeStates();
+                SimulateModeConfigurations();
             }
 
-            if (allowedToCharge) isChargingBattery.Value = 1;
-            else isChargingBattery.Value = 0;
+            if (isCharging) chargingActive.Value = 1;
+            else chargingActive.Value = 0;
+
+            if (batteryLow) batteryLowState.Value = 1;
+            else batteryLowState.Value = 0;
         }
 
         private void SimulateSwitching(float delta)
@@ -184,7 +223,7 @@ namespace CCL.Importer.Implementations
             activeMode.Value = (int)currentMode;
         }
 
-        private void SimulateModeStates()
+        private void SimulateModeConfigurations()
         {
             // Lamps: 0 off, 1 on, 2 blink
             switch (currentMode)
@@ -196,6 +235,12 @@ namespace CCL.Importer.Implementations
                         dieselModeState.Value = 1;
                         batteryModeState.Value = 0;
 
+                        if (batteryLow && selectorMode == HybridMode.Battery)
+                        {
+                            dieselModeState.Value = 2;
+                            batteryModeState.Value = 0;
+                        }
+
                         break;
                     }
 
@@ -206,38 +251,76 @@ namespace CCL.Importer.Implementations
                         dieselModeState.Value = 0;
                         batteryModeState.Value = 1;
 
-                        // wrap the state values in an if block later when charging is implemented for emergency indicator
-
                         break;
                     }
             }
         }
 
+        private void HandleHysteresisThresholds()
+        {
+            if (!adjustableChargeHysteresis)
+            {
+                lowerChargeThreshold = startChargeBatteryLevel;
+                upperChargeThreshold = maxChargeBatteryLevel;
+                return;
+            }
+
+            float minLower = emergencyBatteryLevel + 0.05f;
+            float maxUpper = 0.95f;
+
+            float lower = Mathf.Clamp(chargeLimitLowerBound.Value, minLower, maxUpper);
+            float upper = Mathf.Clamp(chargeLimitUpperBound.Value, minLower, maxUpper);
+
+            if (upper < lower + 0.05f)
+            {
+                upper = Mathf.Min(lower + 0.05f, maxUpper);
+
+                // If we're already against the upper limit move the lower threshold down instead
+                if (upper - lower < 0.05f)
+                {
+                    lower = Mathf.Max(upper - 0.05f, minLower);
+                }
+            }
+
+            lowerChargeThreshold = lower;
+            upperChargeThreshold = upper;
+        }
+
         private void CheckIfAllowedToCharge()
         {
-            if (!allowedToCharge)
+            chargeAnyway = manualChargeToggle.Value == 1;
+
+            if (!manualChargingOnly)
             {
-                if (currentMode == HybridMode.Battery
-                    && chargingOverride.Value != 1
-                    && batteryChargeNorm.Value <= startChargeBatteryLevel)
+                ProcessHysteresis();
+            }
+
+            chargingPermitted =
+                chargingOverride.Value != 1 &&
+                currentMode == HybridMode.Battery;
+        }
+
+        private void ProcessHysteresis()
+        {
+            if (!withinChargeRange)
+            {
+                if (batteryChargeNorm.Value <= lowerChargeThreshold)
                 {
-                    allowedToCharge = true;
+                    withinChargeRange = true;
                 }
             }
             else
             {
-                if (currentMode != HybridMode.Battery
-                    || chargingOverride.Value == 1
-                    || batteryChargeNorm.Value >= maxChargeBatteryLevel)
+                if (batteryChargeNorm.Value >= upperChargeThreshold)
                 {
-                    allowedToCharge = false;
+                    withinChargeRange = false;
                 }
             }
         }
 
         private void SimulateCharging()
         {
-            if (allowedToCharge)
+            if ((withinChargeRange && chargingPermitted) || (chargeAnyway && chargingPermitted))
             {
                 throttleDeOut.Value = chargingThrottle;
 
@@ -247,11 +330,10 @@ namespace CCL.Importer.Implementations
                 effectiveResistanceOut.Value = resistance;
                 genGoalPowerOut.Value = genTargetPwr;
 
-                tmPowerInReadOut.Value = CalculateChargeAmount();
-                tmTotalAmpsOut.Value = CalculateChargeAmps();
+                tmPowerInReadOut.Value = CalculateChargePower();
+                tmTotalAmpsOut.Value = CalculateChargeAmps(resistance);
 
                 isCharging = true;
-                isChargingBattery.Value = 1;
             }
             else
             {
@@ -265,7 +347,6 @@ namespace CCL.Importer.Implementations
                 tmTotalAmpsOut.Value = 0f;
 
                 isCharging = false;
-                isChargingBattery.Value = 0;
             }
         }
 
@@ -279,17 +360,15 @@ namespace CCL.Importer.Implementations
             return resistance;
         }
 
-        private float CalculateChargeAmps()
+        private float CalculateChargeAmps(float resistance)
         {
-            float resistance = CalculateChargeResistance();
-
             if (resistance <= 0f || float.IsInfinity(resistance))
                 return 0f;
 
             return generatorVoltage.Value / resistance;
         }
 
-        private float CalculateChargeAmount()
+        private float CalculateChargePower()
         {
             float chargeIn = -Mathf.Min(genPowerOutRead.Value, genTargetPwr);
             float powerDraw = tmPowerInRead.Value;
@@ -307,9 +386,17 @@ namespace CCL.Importer.Implementations
             effectiveResistanceOut.Value = float.PositiveInfinity;
             genGoalPowerOut.Value = 0f;
 
+            tmTotalAmpsOut.Value = 0f;
+            tmTransitionCurrentLimitOut.Value = float.PositiveInfinity;
+
             tmPowerInReadOut.Value = 0f;
             throttleBatOut.Value = 0f;
             smerBatOut.Value = float.PositiveInfinity;
+
+            extAmpLimitGen.Value = float.PositiveInfinity;
+            extAmpLimitVoltReg.Value = float.PositiveInfinity;
+
+            isCharging = false;
         }
 
         private void ConfigureDieselMode()
@@ -329,7 +416,10 @@ namespace CCL.Importer.Implementations
             throttleBatOut.Value = 0f;
             smerBatOut.Value = float.PositiveInfinity;
 
-            allowedToCharge = false;
+            extAmpLimitGen.Value = extAmpLimitFloatIn;
+            extAmpLimitVoltReg.Value = extAmpLimitFloatIn;
+
+            isCharging = false;
         }
 
         private void ConfigureBatteryMode()
@@ -343,6 +433,30 @@ namespace CCL.Importer.Implementations
 
             throttleBatOut.Value = throttle.Value;
             smerBatOut.Value = smer.Value;
+
+            extAmpLimitGen.Value = float.PositiveInfinity;
+            extAmpLimitVoltReg.Value = extAmpLimitFloatIn;
+        }
+
+        public override JObject GetSaveStateData()
+        {
+            JObject data = new JObject();
+            data[SOC_HYSTERESIS_STATE_SAVE_KEY] = withinChargeRange;
+            data[HYBRID_MODE_SAVE_KEY] = (int)currentMode;
+            return data;
+        }
+
+        public override void SetSaveStateData(JObject savedData)
+        {
+            if (savedData.TryGetValue(SOC_HYSTERESIS_STATE_SAVE_KEY, out JToken token))
+            {
+                withinChargeRange = token.Value<bool>();
+            }
+
+            if (savedData.TryGetValue(HYBRID_MODE_SAVE_KEY, out JToken token2))
+            {
+                currentMode = lastRequestedMode = (HybridMode)token2.Value<int>();
+            }
         }
     }
 }

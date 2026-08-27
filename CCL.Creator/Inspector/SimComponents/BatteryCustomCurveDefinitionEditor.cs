@@ -33,7 +33,7 @@ namespace CCL.Creator.Inspector.SimComponents
                 EditorGUILayout.LabelField("Nominal Pack Voltage", $"{_nominalVoltage * _def.numSeriesCells:F2} V");
             }
 
-            if (GUILayout.Button("Calculate Nominal Cell Voltage"))
+            if (GUILayout.Button("Calculate Nominal Voltages"))
             {
                 _nominalVoltage = CalculateNominalCellVoltage(_def.chargeToVoltageCurve);
                 _hasCalculatedNominalVoltage = true;

@@ -7,12 +7,22 @@ namespace CCL.Types.Components.Simulation
     [AddComponentMenu("CCL/Components/Simulation/Diesel Battery Hybrid Definition")]
     public class DieselBatteryHybridDefinition : SimComponentDefinitionProxy
     {
+        [Tooltip("Mode transition delay in seconds")]
         public float modeTransitionDelay = 1f;
+        [Tooltip("Battery charge level to stop charging")]
         public float maxChargeBatteryLevel = 0.95f;
-        public float chargeBatteryLevel = 0.6f;
+        [Tooltip("Battery charge level to start charging")]
+        public float startChargeBatteryLevel = 0.6f;
+        [Tooltip("Battery charge level to switch to diesel mode")]
         public float emergencyBatteryLevel = 0.4f;
+        [Tooltip("How much power the generator should make to charge the battery, in watts")]
         public float batteryRechargePower = 200000f;
+        [Tooltip("How much the engine is throttled while charging battery")]
         public float engineRechargeThrottle = 0.5f;
+        [Tooltip("Disables battery SoC hysteresis and only charge on manual control")]
+        public bool manualChargingOnly = false;
+        [Tooltip("Enable adjusting battery SoC hysteresis thresholds on the fly")]
+        public bool adjustableChargeHysteresis = false;
 
         [FuseId]
         public string powerFuseId = string.Empty;
@@ -31,12 +41,18 @@ namespace CCL.Types.Components.Simulation
             new PortReferenceDefinition(DVPortValueType.AMPS, "TM_TOTAL_AMPS"),
             new PortReferenceDefinition(DVPortValueType.AMPS, "TM_TRANSITION_CURRENT_LIMIT"),
             new PortReferenceDefinition(DVPortValueType.POWER, "TM_POWER_IN_READ"),
-            new PortReferenceDefinition(DVPortValueType.STATE, "CHARGING_DISABLE_OVERRIDE"),
-            new PortReferenceDefinition(DVPortValueType.CONTROL, "HYBRID_MODE_EXT_IN")
+            new PortReferenceDefinition(DVPortValueType.CONTROL, "CHARGING_DISABLE_OVERRIDE"),
+            new PortReferenceDefinition(DVPortValueType.CONTROL, "MANUAL_CHARGE_TOGGLE"),
+            new PortReferenceDefinition(DVPortValueType.CONTROL, "CHARGING_LIMIT_UPPER_BOUND"),
+            new PortReferenceDefinition(DVPortValueType.CONTROL, "CHARGING_LIMIT_LOWER_BOUND"),
+            new PortReferenceDefinition(DVPortValueType.CONTROL, "HYBRID_MODE_SELECTOR"),
+            new PortReferenceDefinition(DVPortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_OUT_GENERATOR", writeAllowed: true),
+            new PortReferenceDefinition(DVPortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_OUT_VOLTAGE_REGULATOR", writeAllowed: true)
         };
 
         public override IEnumerable<PortDefinition> ExposedPorts => new[]
         {
+            new PortDefinition(DVPortType.EXTERNAL_IN, DVPortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_EXT_IN"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.CONTROL, "THROTTLE_OUT_ENGINE"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.CONTROL, "THROTTLE_OUT_BATTERY"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.OHMS, "SINGLE_MOTOR_EFFECTIVE_RESISTANCE_OUT_GENERATOR"),
@@ -47,10 +63,11 @@ namespace CCL.Types.Components.Simulation
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.POWER, "GEN_GOAL_PWR_OUT"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.AMPS, "TM_TOTAL_AMPS_OUT"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.AMPS, "TM_TRANSITION_CURRENT_LIMIT_OUT"),
-            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "IS_CHARGING_BATTERY"),
-            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "ACTIVE_MODE"),
+            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "CHARGING_ACTIVE_STATE"),
+            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "ACTIVE_MODE_STATE"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "DIESEL_MODE_STATE"),
-            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "BATTERY_MODE_STATE")
+            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "BATTERY_MODE_STATE"),
+            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.STATE, "BATTERY_LOW_STATE")
         };
     }
 }

@@ -7,8 +7,8 @@ namespace CCL.Types.Components.Simulation
     [AddComponentMenu("CCL/Components/Simulation/Regenerative Braking Definition")]
     public class RegenerativeBrakingDefinition : SimComponentDefinitionProxy
     {
-        public float maxRegenPower = 200000f;
-        public float maximumBatteryRechargeLevel = 0.95f;
+        public float maximumRegenPower = 200000f;
+        public float maxChargeBatteryLevel = 0.95f;
 
         [FuseId]
         public string powerFuseId = string.Empty;

@@ -8,10 +8,12 @@ namespace CCL.Importer.Components.Simulation
     {
         public float modeTransitionDelay = 1f;
         public float maxChargeBatteryLevel = 0.95f;
-        public float chargeBatteryLevel = 0.6f;
+        public float startChargeBatteryLevel = 0.6f;
         public float emergencyBatteryLevel = 0.4f;
         public float batteryRechargePower = 200000f;
         public float engineRechargeThrottle = 0.5f;
+        public bool manualChargingOnly = false;
+        public bool adjustableChargeHysteresis = false;
 
         public string powerFuseId = string.Empty;
 
@@ -40,10 +42,22 @@ namespace CCL.Importer.Components.Simulation
         public readonly PortReferenceDefinition tmPowerIn =
             new(PortValueType.POWER, "TM_POWER_IN_READ");
         public readonly PortReferenceDefinition chargeDisableOverride =
-            new(PortValueType.STATE, "CHARGING_DISABLE_OVERRIDE");
+            new(PortValueType.CONTROL, "CHARGING_DISABLE_OVERRIDE");
+        public readonly PortReferenceDefinition manualChargeToggle =
+            new(PortValueType.CONTROL, "MANUAL_CHARGE_TOGGLE");
+        public readonly PortReferenceDefinition chargeLimitUpperBound =
+            new(PortValueType.CONTROL, "CHARGING_LIMIT_UPPER_BOUND");
+        public readonly PortReferenceDefinition chargeLimitLowerBound =
+            new(PortValueType.CONTROL, "CHARGING_LIMIT_LOWER_BOUND");
         public readonly PortReferenceDefinition hybridModeControl =
-            new(PortValueType.CONTROL, "HYBRID_MODE_EXT_IN");
+            new(PortValueType.CONTROL, "HYBRID_MODE_SELECTOR");
+        public readonly PortReferenceDefinition extAmpLimitGen =
+            new(PortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_OUT_GENERATOR", writeAllowed: true);
+        public readonly PortReferenceDefinition extAmpLimitVoltReg =
+            new(PortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_OUT_VOLTAGE_REGULATOR", writeAllowed: true);
 
+        public readonly PortDefinition extCurrentLimitExtIn =
+            new(PortType.EXTERNAL_IN, PortValueType.AMPS, "EXTERNAL_CURRENT_LIMIT_EXT_IN");
         public readonly PortDefinition throttleDeOut =
             new(PortType.READONLY_OUT, PortValueType.CONTROL, "THROTTLE_OUT_ENGINE");
         public readonly PortDefinition throttleBatteryOut =
@@ -64,14 +78,16 @@ namespace CCL.Importer.Components.Simulation
             new(PortType.READONLY_OUT, PortValueType.POWER, "TM_TOTAL_AMPS_OUT");
         public readonly PortDefinition transitionCurrentLimitOut =
             new(PortType.READONLY_OUT, PortValueType.POWER, "TM_TRANSITION_CURRENT_LIMIT_OUT");
-        public readonly PortDefinition isChargingBattery =
-            new(PortType.READONLY_OUT, PortValueType.STATE, "IS_CHARGING_BATTERY");
+        public readonly PortDefinition chargingActive =
+            new(PortType.READONLY_OUT, PortValueType.STATE, "CHARGING_ACTIVE_STATE");
         public readonly PortDefinition activeMode =
-            new(PortType.READONLY_OUT, PortValueType.STATE, "ACTIVE_MODE");
+            new(PortType.READONLY_OUT, PortValueType.STATE, "ACTIVE_MODE_STATE");
         public readonly PortDefinition dieselModeState =
             new(PortType.READONLY_OUT, PortValueType.STATE, "DIESEL_MODE_STATE");
         public readonly PortDefinition batteryModeState =
             new(PortType.READONLY_OUT, PortValueType.STATE, "BATTERY_MODE_STATE");
+        public readonly PortDefinition batteryLow =
+            new(PortType.READONLY_OUT, PortValueType.STATE, "BATTERY_LOW_STATE");
 
         public override SimComponent InstantiateImplementation()
         {

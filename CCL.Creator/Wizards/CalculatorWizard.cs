@@ -1,6 +1,7 @@
 ﻿using CCL.Creator.Utility;
 using CCL.Types;
 using CCL.Types.Components.Simulation;
+using CCL.Types.Components.Simulation.Electric;
 using CCL.Types.Proxies.Simulation;
 using CCL.Types.Proxies.Simulation.Diesel;
 using CCL.Types.Proxies.Simulation.Electric;
@@ -36,7 +37,9 @@ namespace CCL.Creator.Wizards
             new GUIContent("Traction Motor Properties",
                 "Motor voltage and current for different configurations"),
             new GUIContent("Generator Voltage",
-                "Expected maximum generator voltage")
+                "Expected maximum generator voltage"),
+            new GUIContent("Battery Custom Curve Voltage",
+                "Expected battery voltage at a given SoC")
         };
 
         private static readonly GUIContent s_context = new GUIContent("Context Object",
@@ -83,6 +86,9 @@ namespace CCL.Creator.Wizards
                         break;
                     case 5:
                         _generatorVoltage.Draw();
+                        break;
+                    case 6:
+                        _customBatteryVoltage.Draw();
                         break;
                     default:
                         EditorGUILayout.HelpBox("Please select an option above!", MessageType.Info);
@@ -484,6 +490,35 @@ namespace CCL.Creator.Wizards
 
         [SerializeField]
         private GeneratorVoltage _generatorVoltage = new GeneratorVoltage();
+
+        #endregion
+
+        #region Battery Custom Curve Voltage
+
+        [Serializable]
+        private class CustomBatteryVoltage
+        {
+            public BatteryCustomCurveDefinition? Definition;
+            public float NormalizedStateOfCharge = 1f;
+
+            public void Draw()
+            {
+                Definition = EditorHelpers.ObjectField("Battery Custom Curve Definition", Definition, true);
+                NormalizedStateOfCharge = EditorGUILayout.Slider("Normalized Battery SoC", NormalizedStateOfCharge, 0.0f, 1.0f);
+
+                if (Definition == null)
+                {
+                    EditorGUILayout.HelpBox("Please link your battery custom curve configuration in the field above", MessageType.Info);
+                    return;
+                }
+
+                var voltage = Definition.chargeToVoltageCurve.Evaluate(NormalizedStateOfCharge) * Definition.numSeriesCells;
+                EditorGUILayout.LabelField("Voltage at SoC", $"{voltage:F2} V");
+            }
+        }
+
+        [SerializeField]
+        private CustomBatteryVoltage _customBatteryVoltage = new CustomBatteryVoltage();
 
         #endregion
     }

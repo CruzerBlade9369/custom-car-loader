@@ -10,6 +10,7 @@ namespace CCL.Types.Components.Simulation.Electric
         public int numSeriesCells = 36;
         public float internalResistance = 0.005f;
         public float baseConsumptionMultiplier = 4f;
+        public float baseRechargeMultiplier = 1f;
         public AnimationCurve chargeToVoltageCurve = null!;
 
         [FuseId(true)]
@@ -17,6 +18,7 @@ namespace CCL.Types.Components.Simulation.Electric
 
         public override IEnumerable<PortDefinition> ExposedPorts => new[]
         {
+            new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.OHMS, "INTERNAL_RESISTANCE"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.VOLTS, "VOLTAGE"),
             new PortDefinition(DVPortType.READONLY_OUT, DVPortValueType.VOLTS, "VOLTAGE_NORMALIZED")
         };
